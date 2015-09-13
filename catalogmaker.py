@@ -3,6 +3,8 @@ import random
 import uuid
 from PySide import QtGui, QtCore
 
+import media
+
 
 class MainWindow(QtGui.QMainWindow):
 	
@@ -50,11 +52,16 @@ class MainWindow(QtGui.QMainWindow):
 		fitInViewAct.setStatusTip("Resize an image fit in Canvas view")
 		fitInViewAct.triggered.connect(self.fitInView)
 
+		reloadColorListAct = QtGui.QAction("Reload", self)
+		reloadColorListAct.setStatusTip("Reload Color table")
+		reloadColorListAct.triggered.connect(self.reloadColorList)
+
 		fileMenu = self.menuBar().addMenu("File")
 		fileMenu.addAction(openImageAct)
 
 		viewMenu = self.menuBar().addMenu("View")
 		viewMenu.addAction(fitInViewAct)
+		viewMenu.addAction(reloadColorListAct)
 
 	def openImage(self):
 		fileName = QtGui.QFileDialog.getOpenFileName(self, "Open Image", "~/Desktop", "Image Files (*.png *.jpg *.bmp)")
@@ -67,8 +74,18 @@ class MainWindow(QtGui.QMainWindow):
 	def fitInView(self):
 		if self.canvasView == None or self.imagePixmapGraphicsItem == None:
 			return
-
 		self.canvasView.fitInView(self.imagePixmapGraphicsItem, QtCore.Qt.KeepAspectRatio)
+
+	def reloadColorList(self):
+		self.colorListWidget.reload()
+
+	"""
+	return QColor
+	"""
+	def _getPixelColorAtPoint(self, x, y):
+		rgb = self.image.pixel(x, y)
+		color = QtGui.QColor(rgb)
+		return color		
 
 	def GraphicsCanvasViewMouseDidMove(self, mousePos):
 		if not self.image:
@@ -80,16 +97,35 @@ class MainWindow(QtGui.QMainWindow):
 			self.statusBar().showMessage('')
 			return
 
-		rgb = self.image.pixel(px, py)
-		color = QtGui.QColor(rgb)
+		color = self._getPixelColorAtPoint(px, py)
 		r = color.red()
 		g = color.green()
 		b = color.blue()
 		self.statusBar().showMessage('Color <%s %s %s> @ <%s>' % (r, g, b, mousePos))
 
+	def GraphicsCanvasViewMouseDidPress(self, mousePos):
+		if not self.image:
+			return
+		
+		px = int(mousePos.x())
+		py = int(mousePos.y())
+		if (px < 0 or py < 0) or (px > self.image.width() or py > self.image.height()):
+			self.statusBar().showMessage('')
+			return
+
+		color = self._getPixelColorAtPoint(px, py)
+		r = color.red()
+		g = color.green()
+		b = color.blue()
+
+		print "Add new marker at %s which color is <%s %s %s>" % (mousePos, r, g, b)
+		self.colorListWidget.addNewColorData("", "", color)
+
 
 class GraphicsCanvasViewDelegate(object):
 	def GraphicsCanvasViewMouseDidMove(self, mousePos):
+		pass
+	def GraphicsCanvasViewMouseDidPress(self, mousePos):
 		pass
 
 
@@ -105,6 +141,12 @@ class GraphicsCanvasView(QtGui.QGraphicsView):
 		scenePos = self.mapToScene(pos)
 		if self.delegate:
 			self.delegate.GraphicsCanvasViewMouseDidMove(scenePos)
+
+	def mousePressEvent(self, mouseEvent):
+		pos = mouseEvent.pos()
+		scenePos = self.mapToScene(pos)
+		if self.delegate:
+			self.delegate.GraphicsCanvasViewMouseDidPress(scenePos)
 
 
 class ColorData(object):
@@ -183,28 +225,51 @@ class ColorDataList(object):
 			yield c.getUUID()
 
 
+class ColorThumbnail(QtGui.QWidget):
+	def __init__(self, color, parent=None):
+		super(ColorThumbnail, self).__init__(parent)
+		self.color = color
+
+	def paintEvent(self, event):
+		painter = QtGui.QPainter(self)
+		painter.fillRect(self.rect(), self.color)
+		painter.drawRect(self.rect())
+
+
 class ColorListWidget(QtGui.QWidget):
+
+	ENTRY_HEIGHT = 32
 
 	def __init__(self, parent=None):
 		super(ColorListWidget, self).__init__(parent=parent)
 
-		self.colorDataList = ColorDataList()
-		self.addExampleColors()
+		self._colorDataList = ColorDataList()
 
 		self.initLayout()
+		# self.addExampleColors()
+		self.reload()
 
 	def initLayout(self):
 		grid = QtGui.QGridLayout()
-		r = 0
+		self.grid = grid
+		self.setLayout(grid)
 
-		for colorDataUUID in self.colorDataList.getAllUUIDs():
-			
-			colorData = self.colorDataList.getCopyOfColorDataByUUID(colorDataUUID)
+	def reload(self):
+		grid = self.grid
+
+		while grid.count() > 0:
+			layoutItem = grid.takeAt(0)
+			widget = layoutItem.widget()
+			widget.setParent(None)
+			widget.deleteLater()
+
+		for colorDataUUID in self._colorDataList.getAllUUIDs():
+			colorData = self._colorDataList.getCopyOfColorDataByUUID(colorDataUUID)
 
 			nameText = QtGui.QLineEdit()
 			nameText.colorData = colorData
 			nameText.setText(colorData.colorName)
-			nameText.textChanged.connect(self.nameTextChanged) 
+			nameText.textChanged.connect(self.nameTextChanged)
 
 			codeText = QtGui.QLineEdit()
 			codeText.colorData = colorData
@@ -223,16 +288,36 @@ class ColorListWidget(QtGui.QWidget):
 			blueLabel.colorData = colorData
 			blueLabel.setText(str(colorData.blue))
 
-			grid.addWidget(nameText, r, 0)
-			grid.addWidget(codeText, r, 1)
-			grid.addWidget(redLabel, r, 2)
-			grid.addWidget(greenLabel, r, 3)
-			grid.addWidget(blueLabel, r, 4)
+			color = QtGui.QColor(colorData.red, colorData.green, colorData.blue)
+			colorThumbnail = ColorThumbnail(color, parent=self)
+			colorThumbnail.setFixedSize(24, 24)
 
-			r += 1
+			r = grid.count()
+			grid.addWidget(colorThumbnail, r, 0)
+			grid.addWidget(nameText, r, 1)
+			grid.addWidget(codeText, r, 2)
+			grid.addWidget(redLabel, r, 3)
+			grid.addWidget(greenLabel, r, 4)
+			grid.addWidget(blueLabel, r, 5)
 
-		self.grid = grid
-		self.setLayout(grid)
+		self.resize(self.sizeHint())
+
+	def sizeHint(self):
+		size = QtCore.QSize(320, 10);
+		numberOfRows = self.grid.rowCount()
+		
+		for r in range(0, numberOfRows):
+			layoutItem = self.grid.itemAtPosition(r, 0)
+			if not layoutItem:
+				continue
+
+			widget = layoutItem.widget()
+			h = size.height()
+			h += ColorListWidget.ENTRY_HEIGHT
+			h += self.grid.spacing()
+			size.setHeight(h)
+
+		return size
 
 	def addExampleColors(self):
 		for i in range(1, 30):
@@ -241,16 +326,17 @@ class ColorListWidget(QtGui.QWidget):
 			red = random.randint(0, 255)
 			green = random.randint(0, 255)
 			blue = random.randint(0, 255)
-			self.colorDataList.addNewColorData(colorName, colorCode, red, green, blue)
+			color = QtGui.QColor(red, green, blue)
+			self.addNewColorData(colorName, colorCode, color)
 
 	def nameTextChanged(self, text):
 		colorData = self.sender().colorData
 
 		print "Change color name: %s" % text
 		colorData.colorName = text
-		self.colorDataList.commitChange(colorData)
+		self._colorDataList.commitChange(colorData)
 
-		debugColorData = self.colorDataList.getCopyOfColorDataByUUID(colorData.getUUID())
+		debugColorData = self._colorDataList.getCopyOfColorDataByUUID(colorData.getUUID())
 		print "After changed - %s" % debugColorData.getDebugString()
 		del debugColorData
 
@@ -259,11 +345,21 @@ class ColorListWidget(QtGui.QWidget):
 
 		print "Change color code: %s" % text
 		colorData.colorCode = text
-		self.colorDataList.commitChange(colorData)
+		self._colorDataList.commitChange(colorData)
 
-		debugColorData = self.colorDataList.getCopyOfColorDataByUUID(colorData.getUUID())
+		debugColorData = self._colorDataList.getCopyOfColorDataByUUID(colorData.getUUID())
 		print "After changed - %s" % debugColorData.getDebugString()
 		del debugColorData
+
+	def addNewColorData(self, colorName, colorCode, colorAsQColor):
+		r = colorAsQColor.red()
+		g = colorAsQColor.green()
+		b = colorAsQColor.blue()
+		self._colorDataList.addNewColorData(colorName, colorCode, r, g, b)
+		self.reload()
+
+	def paintEvent(self, paintEvent):
+		pass
 
 
 def main():

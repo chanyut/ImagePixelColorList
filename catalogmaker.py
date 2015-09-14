@@ -296,7 +296,7 @@ class ColorDataList(object):
 		lines = content.split('\n')
 		for line in lines:
 			c = line.split(delimeter)
-			if len(c) != 5:
+			if len(c) != 6:
 				continue
 
 			colorUUID = uuid.UUID(c[0])
@@ -305,7 +305,7 @@ class ColorDataList(object):
 			red = int(c[3])
 			green = int(c[4])
 			blue = int(c[5])
-			self.addNewColorData(name, code, red, green, blue, colorUUID=colorUUID)
+			self.addNewColorData(name, code, red, green, blue, colorDataUUID=colorUUID)
 
 	def exportAsCSV(self, delimeter=';'):
 		outputString = ''
@@ -359,30 +359,26 @@ class ColorTableWidget(QtGui.QTableWidget):
 
 		self.cellActivated.connect(self.onTableCellActivated)
 		self.cellChanged.connect(self.onTableCellChanged)
-		self.itemChanged.connect(self.onTableItemChanged)
-
 
 	def onTableCellActivated(self, row, column):
 		item = self.item(row, ColorTableWidget.COLUMN_COLOR_NAME)
 		if not item:
 			return
-		if not hasattr(item, '__colorDataUUID'):
+		if not hasattr(item, 'colorDataUUID'):
 			return
 
-		colorUUID = item.__colorDataUUID
+		colorUUID = item.colorDataUUID
 		colorData = self._colorDataList.getCopyOfColorDataByUUID(colorUUID)
 		colorCode = colorData.colorCode
 		print 'cell activate at row: %s col: %s => %s [%s]' % (row, column, colorData.colorCode, colorUUID)
 		
 	def onTableCellChanged(self, row, column):
-		print 'cell change at %s %s' % (row, column)
 		if column in [ColorTableWidget.COLUMN_COLOR_NAME, ColorTableWidget.COLUMN_COLOR_CODE]:
 			item = self.item(row, column)
-			if not hasattr(item, '__colorDataUUID'):
-				print "no uuid"
+			if not hasattr(item, 'colorDataUUID'):
 				return
 
-			colorUUID = item.__colorDataUUID
+			colorUUID = item.colorDataUUID
 			colorData = self._colorDataList.getCopyOfColorDataByUUID(colorUUID)
 			newValue = item.text()
 			
@@ -391,15 +387,7 @@ class ColorTableWidget(QtGui.QTableWidget):
 			elif column == ColorTableWidget.COLUMN_COLOR_CODE:
 				colorData.colorCode = newValue
 
-			print 'Cell change to %s' % newValue
-
 			self._colorDataList.commitChange(colorData)
-
-	def onTableItemChanged(self, item):
-		print 'cccc'
-		row = item.row()
-		column = item.column()
-		self.onTableCellChanged(row, column)
 
 	def _addNewBlankRow(self):
 		colorThumbnail = ColorThumbnail(QtGui.QColor(QtCore.Qt.white), parent=self)
@@ -442,11 +430,11 @@ class ColorTableWidget(QtGui.QTableWidget):
 
 		colorNameItem = self.item(row, ColorTableWidget.COLUMN_COLOR_NAME)
 		colorNameItem.setText(colorName)
-		colorNameItem.__colorDataUUID = colorDataUUID
-
+		colorNameItem.colorDataUUID = colorDataUUID
+		
 		colorCodeItem = self.item(row, ColorTableWidget.COLUMN_COLOR_CODE)
 		colorCodeItem.setText(colorCode)
-		colorCodeItem.__colorDataUUID = colorDataUUID
+		colorCodeItem.colorDataUUID = colorDataUUID
 
 		colorRedItem = self.item(row, ColorTableWidget.COLUMN_COLOR_RED)
 		colorRedItem.setText(str(red))

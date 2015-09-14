@@ -16,14 +16,14 @@ class MainWindow(QtGui.QMainWindow):
 		self.image = None
 		self.imagePixmap = None
 		self.imagePixmapGraphicsItem = None
-		self.colorListWidget = None
+		self.colorTableWidget = None
 
 		self.initLayout()
 		self.show()
 
 	def initLayout(self):
 		self.statusBar().showMessage('Ready')
-		self.setGeometry(0, 0, 400, 400)
+		self.setGeometry(0, 0, 1024, 768)
 		self.setWindowTitle('Catalog Maker')
 
 		# Central widget
@@ -35,37 +35,45 @@ class MainWindow(QtGui.QMainWindow):
 		self.canvasView = canvasView;
 
 		# Right dock widget
-		dock = QtGui.QDockWidget("Color List", self)
+		dock = QtGui.QDockWidget('Color List', self)
 		dock.setAllowedAreas(QtCore.Qt.RightDockWidgetArea)
-		colorList = ColorListWidget(dock)
-		scrollArea = QtGui.QScrollArea()
-		scrollArea.setWidget(colorList)
-		dock.setWidget(scrollArea)
+		colorTableWidget = ColorTableWidget()
+		dock.setWidget(colorTableWidget)
 		self.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
-		self.colorListWidget = colorList
+		self.colorTableWidget = colorTableWidget
 
-		openImageAct = QtGui.QAction("Open image", self)
-		openImageAct.setStatusTip("Open image, and place into Canvas.")
+		openImageAct = QtGui.QAction('Open image', self)
+		openImageAct.setStatusTip('Open image, and place into Canvas.')
 		openImageAct.triggered.connect(self.openImage)
 
-		fitInViewAct = QtGui.QAction("Fit in view", self)
-		fitInViewAct.setStatusTip("Resize an image fit in Canvas view")
+		fitInViewAct = QtGui.QAction('Fit in view', self)
+		fitInViewAct.setStatusTip('Resize an image fit in Canvas view')
 		fitInViewAct.triggered.connect(self.fitInView)
 
-		reloadColorListAct = QtGui.QAction("Reload", self)
-		reloadColorListAct.setStatusTip("Reload Color table")
+		reloadColorListAct = QtGui.QAction('Reload', self)
+		reloadColorListAct.setStatusTip('Reload Color table')
 		reloadColorListAct.triggered.connect(self.reloadColorList)
 
-		fileMenu = self.menuBar().addMenu("File")
-		fileMenu.addAction(openImageAct)
+		loadFromCSVAct = QtGui.QAction('Load from CSV', self)
+		loadFromCSVAct.setStatusTip('Load data from CSV')
+		loadFromCSVAct.triggered.connect(self.loadFromCSV)
 
-		viewMenu = self.menuBar().addMenu("View")
+		exportAsCSVAct = QtGui.QAction('Export as CSV', self)
+		exportAsCSVAct.setStatusTip('Export as CSV')
+		exportAsCSVAct.triggered.connect(self.exportAsCSV)
+
+		fileMenu = self.menuBar().addMenu('File')
+		fileMenu.addAction(openImageAct)
+		fileMenu.addAction(loadFromCSVAct)
+		fileMenu.addAction(exportAsCSVAct)
+
+		viewMenu = self.menuBar().addMenu('View')
 		viewMenu.addAction(fitInViewAct)
 		viewMenu.addAction(reloadColorListAct)
 
 	def openImage(self):
-		fileName = QtGui.QFileDialog.getOpenFileName(self, "Open Image", "~/Desktop", "Image Files (*.png *.jpg *.bmp)")
-		self.imagePixmap = QtGui.QPixmap(fileName[0])
+		fileName,_ = QtGui.QFileDialog.getOpenFileName(self, 'Open Image', QtCore.QDir.currentPath(), 'Image Files (*.png *.jpg *.bmp)')
+		self.imagePixmap = QtGui.QPixmap(fileName)
 		self.image = self.imagePixmap.toImage()
 		self.imagePixmapGraphicsItem = QtGui.QGraphicsPixmapItem(self.imagePixmap)
 		self.canvasScene.addItem(self.imagePixmapGraphicsItem)
@@ -77,7 +85,21 @@ class MainWindow(QtGui.QMainWindow):
 		self.canvasView.fitInView(self.imagePixmapGraphicsItem, QtCore.Qt.KeepAspectRatio)
 
 	def reloadColorList(self):
-		self.colorListWidget.reload()
+		self.colorTableWidget.reload()
+
+	def loadFromCSV(self):
+		fileName,_ = QtGui.QFileDialog.getOpenFileName(self, 'Load CSV', QtCore.QDir.currentPath(), 'CSV Files (*.csv)')
+		self.colorTableWidget.loadFromCSV(fileName)
+
+	def exportAsCSV(self):
+		format = 'csv'
+		initialPath = QtCore.QDir.currentPath() + "/colorDataExport." + format
+		fileName, _ = QtGui.QFileDialog.getSaveFileName(self, 'Save As', initialPath, '%s Files (*.%s);;All Files (*)' % (format.upper(), format))
+		
+		if fileName:
+			output = self.colorTableWidget.exportAsCSV()
+			with open(fileName, 'w') as f:
+				f.write(output)
 
 	"""
 	return QColor
@@ -118,8 +140,9 @@ class MainWindow(QtGui.QMainWindow):
 		g = color.green()
 		b = color.blue()
 
-		print "Add new marker at %s which color is <%s %s %s>" % (mousePos, r, g, b)
-		self.colorListWidget.addNewColorData("", "", color)
+		print 'Add new marker at %s which color is <%s %s %s>' % (mousePos, r, g, b)
+		self.colorTableWidget.addNewColorData('', '', color)
+		self.colorTableWidget.selectAndEditLastRowAtColumn(ColorTableWidget.COLUMN_COLOR_NAME)
 
 
 class GraphicsCanvasViewDelegate(object):
@@ -133,20 +156,54 @@ class GraphicsCanvasView(QtGui.QGraphicsView):
 	def __init__(self, graphicsScene, parent=None):
 		super(GraphicsCanvasView, self).__init__(graphicsScene, parent=parent)
 		self.setMouseTracking(True)
+		self.setInteractive(True)
+		self.setDragMode(QtGui.QGraphicsView.ScrollHandDrag)
 		self.onMouseMoveOnImage = None
 		self.delegate = None
 
 	def mouseMoveEvent(self, mouseEvent):
 		pos = mouseEvent.pos()
 		scenePos = self.mapToScene(pos)
+
 		if self.delegate:
 			self.delegate.GraphicsCanvasViewMouseDidMove(scenePos)
+	
+		super(GraphicsCanvasView, self).mouseMoveEvent(mouseEvent)
 
 	def mousePressEvent(self, mouseEvent):
 		pos = mouseEvent.pos()
 		scenePos = self.mapToScene(pos)
-		if self.delegate:
-			self.delegate.GraphicsCanvasViewMouseDidPress(scenePos)
+
+		if mouseEvent.button() == QtCore.Qt.RightButton:
+			if self.delegate:
+				self.delegate.GraphicsCanvasViewMouseDidPress(scenePos)
+		else:
+			super(GraphicsCanvasView, self).mousePressEvent(mouseEvent)
+	
+	def wheelEvent(self, wheelEvent):
+		"""
+		Credit: http://stackoverflow.com/questions/19113532/qgraphicsview-zooming-in-and-out-under-mouse-position-using-mouse-wheel
+		Answer from User: Rengel
+		"""
+		zoomInFactor = 1.25
+		zoomOutFactor = 1 / zoomInFactor
+
+		# Save the scene pos
+		oldPos = self.mapToScene(wheelEvent.pos())
+
+		# Zoom
+		if wheelEvent.delta() > 0:
+		    zoomFactor = zoomInFactor
+		else:
+		    zoomFactor = zoomOutFactor
+		self.scale(zoomFactor, zoomFactor)
+
+		# Get the new position
+		newPos = self.mapToScene(wheelEvent.pos())
+
+		# Move scene to old position
+		delta = newPos - oldPos
+		self.translate(delta.x(), delta.y())
 
 
 class ColorData(object):
@@ -190,8 +247,11 @@ class ColorDataList(object):
 		super(ColorDataList, self).__init__()
 		self._internalList = []
 
-	def addNewColorData(self, name, code, red, green, blue):
-		newColorData = ColorData(uuid.uuid1())
+	def addNewColorData(self, name, code, red, green, blue, colorDataUUID=None):
+		if not colorDataUUID:
+			colorDataUUID = uuid.uuid1()
+
+		newColorData = ColorData(colorDataUUID)
 		newColorData.colorName = name
 		newColorData.colorCode = code
 		newColorData.red = red
@@ -220,9 +280,43 @@ class ColorDataList(object):
 				return True
 		return False
 
+	def clearAll(self):
+		del self._internalList
+		self._internalList = []
+		
+	def numberOfTotalColors(self):
+		return len(self._internalList)
+
 	def getAllUUIDs(self):
 		for c in self._internalList:
 			yield c.getUUID()
+
+	def loadFromCSVContent(self, content, delimeter=';'):
+		self.clearAll()
+		lines = content.split('\n')
+		for line in lines:
+			c = line.split(delimeter)
+			if len(c) != 5:
+				continue
+
+			colorUUID = uuid.UUID(c[0])
+			name = c[1]
+			code = c[2]
+			red = int(c[3])
+			green = int(c[4])
+			blue = int(c[5])
+			self.addNewColorData(name, code, red, green, blue, colorUUID=colorUUID)
+
+	def exportAsCSV(self, delimeter=';'):
+		outputString = ''
+		for colorData in self._internalList:
+			outputString += str(colorData.getUUID()) + delimeter
+			outputString += colorData.colorName + delimeter
+			outputString += colorData.colorCode + delimeter
+			outputString += str(colorData.red) + delimeter
+			outputString += str(colorData.green) + delimeter
+			outputString += str(colorData.blue) + '\n'
+		return outputString
 
 
 class ColorThumbnail(QtGui.QWidget):
@@ -236,130 +330,178 @@ class ColorThumbnail(QtGui.QWidget):
 		painter.drawRect(self.rect())
 
 
-class ColorListWidget(QtGui.QWidget):
+class ColorTableWidget(QtGui.QTableWidget):
 
-	ENTRY_HEIGHT = 32
+	COLUMN_COLOR_THUMBNAIL = 0
+	COLUMN_COLOR_NAME = 1
+	COLUMN_COLOR_CODE = 2
+	COLUMN_COLOR_RED = 3
+	COLUMN_COLOR_GREEN = 4
+	COLUMN_COLOR_BLUE = 5
 
 	def __init__(self, parent=None):
-		super(ColorListWidget, self).__init__(parent=parent)
-
+		super(ColorTableWidget, self).__init__(0, 6, parent)
+		
 		self._colorDataList = ColorDataList()
 
-		self.initLayout()
-		# self.addExampleColors()
-		self.reload()
-
-	def initLayout(self):
-		grid = QtGui.QGridLayout()
-		self.grid = grid
-		self.setLayout(grid)
-
-	def reload(self):
-		grid = self.grid
-
-		while grid.count() > 0:
-			layoutItem = grid.takeAt(0)
-			widget = layoutItem.widget()
-			widget.setParent(None)
-			widget.deleteLater()
-
-		for colorDataUUID in self._colorDataList.getAllUUIDs():
-			colorData = self._colorDataList.getCopyOfColorDataByUUID(colorDataUUID)
-
-			nameText = QtGui.QLineEdit()
-			nameText.colorData = colorData
-			nameText.setText(colorData.colorName)
-			nameText.textChanged.connect(self.nameTextChanged)
-
-			codeText = QtGui.QLineEdit()
-			codeText.colorData = colorData
-			codeText.setText(colorData.colorCode)
-			codeText.textChanged.connect(self.codeTextChanged)
-
-			redLabel = QtGui.QLabel()
-			redLabel.colorData = colorData
-			redLabel.setText(str(colorData.red))
-
-			greenLabel = QtGui.QLabel()
-			greenLabel.colorData = colorData
-			greenLabel.setText(str(colorData.green))
-
-			blueLabel = QtGui.QLabel()
-			blueLabel.colorData = colorData
-			blueLabel.setText(str(colorData.blue))
-
-			color = QtGui.QColor(colorData.red, colorData.green, colorData.blue)
-			colorThumbnail = ColorThumbnail(color, parent=self)
-			colorThumbnail.setFixedSize(24, 24)
-
-			r = grid.count()
-			grid.addWidget(colorThumbnail, r, 0)
-			grid.addWidget(nameText, r, 1)
-			grid.addWidget(codeText, r, 2)
-			grid.addWidget(redLabel, r, 3)
-			grid.addWidget(greenLabel, r, 4)
-			grid.addWidget(blueLabel, r, 5)
-
-		self.resize(self.sizeHint())
-
-	def sizeHint(self):
-		size = QtCore.QSize(320, 10);
-		numberOfRows = self.grid.rowCount()
+		self.setSelectionBehavior(QtGui.QAbstractItemView.SelectItems)
+		self.setSelectionMode(QtGui.QAbstractItemView.SingleSelection)
+		self.setHorizontalHeaderLabels(('', 'Name', 'Code', 'R', 'G', 'B'))
+		self.horizontalHeader().setResizeMode(ColorTableWidget.COLUMN_COLOR_NAME, QtGui.QHeaderView.Stretch)
+		self.horizontalHeader().setResizeMode(ColorTableWidget.COLUMN_COLOR_CODE, QtGui.QHeaderView.Stretch)
+		self.horizontalHeader().resizeSection(ColorTableWidget.COLUMN_COLOR_THUMBNAIL, 26)
+		self.horizontalHeader().resizeSection(ColorTableWidget.COLUMN_COLOR_RED, 40)
+		self.horizontalHeader().resizeSection(ColorTableWidget.COLUMN_COLOR_GREEN, 40)
+		self.horizontalHeader().resizeSection(ColorTableWidget.COLUMN_COLOR_BLUE, 40)
 		
-		for r in range(0, numberOfRows):
-			layoutItem = self.grid.itemAtPosition(r, 0)
-			if not layoutItem:
-				continue
+		self.verticalHeader().hide()
+		self.setShowGrid(True)
 
-			widget = layoutItem.widget()
-			h = size.height()
-			h += ColorListWidget.ENTRY_HEIGHT
-			h += self.grid.spacing()
-			size.setHeight(h)
+		self.cellActivated.connect(self.onTableCellActivated)
+		self.cellChanged.connect(self.onTableCellChanged)
+		self.itemChanged.connect(self.onTableItemChanged)
 
-		return size
 
-	def addExampleColors(self):
-		for i in range(1, 30):
-			colorName = 'name %s' % i
-			colorCode = 'code %s' % i
-			red = random.randint(0, 255)
-			green = random.randint(0, 255)
-			blue = random.randint(0, 255)
-			color = QtGui.QColor(red, green, blue)
-			self.addNewColorData(colorName, colorCode, color)
+	def onTableCellActivated(self, row, column):
+		item = self.item(row, ColorTableWidget.COLUMN_COLOR_NAME)
+		if not item:
+			return
+		if not hasattr(item, '__colorDataUUID'):
+			return
 
-	def nameTextChanged(self, text):
-		colorData = self.sender().colorData
+		colorUUID = item.__colorDataUUID
+		colorData = self._colorDataList.getCopyOfColorDataByUUID(colorUUID)
+		colorCode = colorData.colorCode
+		print 'cell activate at row: %s col: %s => %s [%s]' % (row, column, colorData.colorCode, colorUUID)
+		
+	def onTableCellChanged(self, row, column):
+		print 'cell change at %s %s' % (row, column)
+		if column in [ColorTableWidget.COLUMN_COLOR_NAME, ColorTableWidget.COLUMN_COLOR_CODE]:
+			item = self.item(row, column)
+			if not hasattr(item, '__colorDataUUID'):
+				print "no uuid"
+				return
 
-		print "Change color name: %s" % text
-		colorData.colorName = text
-		self._colorDataList.commitChange(colorData)
+			colorUUID = item.__colorDataUUID
+			colorData = self._colorDataList.getCopyOfColorDataByUUID(colorUUID)
+			newValue = item.text()
+			
+			if column == ColorTableWidget.COLUMN_COLOR_NAME:
+				colorData.colorName = newValue
+			elif column == ColorTableWidget.COLUMN_COLOR_CODE:
+				colorData.colorCode = newValue
 
-		debugColorData = self._colorDataList.getCopyOfColorDataByUUID(colorData.getUUID())
-		print "After changed - %s" % debugColorData.getDebugString()
-		del debugColorData
+			print 'Cell change to %s' % newValue
 
-	def codeTextChanged(self, text):
-		colorData = self.sender().colorData
+			self._colorDataList.commitChange(colorData)
 
-		print "Change color code: %s" % text
-		colorData.colorCode = text
-		self._colorDataList.commitChange(colorData)
+	def onTableItemChanged(self, item):
+		print 'cccc'
+		row = item.row()
+		column = item.column()
+		self.onTableCellChanged(row, column)
 
-		debugColorData = self._colorDataList.getCopyOfColorDataByUUID(colorData.getUUID())
-		print "After changed - %s" % debugColorData.getDebugString()
-		del debugColorData
+	def _addNewBlankRow(self):
+		colorThumbnail = ColorThumbnail(QtGui.QColor(QtCore.Qt.white), parent=self)
+		colorThumbnail.setFixedSize(24, 24)
+
+		colorNameItem = QtGui.QTableWidgetItem('')
+		colorNameItem.setFlags(colorNameItem.flags() | QtCore.Qt.ItemIsEditable)
+
+		colorCodeItem = QtGui.QTableWidgetItem('')
+		colorCodeItem.setFlags(colorNameItem.flags() | QtCore.Qt.ItemIsEditable)
+
+		colorRedItem = QtGui.QTableWidgetItem('0')
+		colorRedItem.setFlags(colorNameItem.flags() ^ QtCore.Qt.ItemIsEditable)
+
+		colorGreenItem = QtGui.QTableWidgetItem('0')
+		colorGreenItem.setFlags(colorNameItem.flags() ^ QtCore.Qt.ItemIsEditable)
+
+		colorBlueItem = QtGui.QTableWidgetItem('0')
+		colorBlueItem.setFlags(colorNameItem.flags() ^ QtCore.Qt.ItemIsEditable)
+
+		row = self.rowCount()
+		self.insertRow(row)
+		self.setCellWidget(row, ColorTableWidget.COLUMN_COLOR_THUMBNAIL, colorThumbnail)
+		self.setItem(row, ColorTableWidget.COLUMN_COLOR_NAME, colorNameItem)
+		self.setItem(row, ColorTableWidget.COLUMN_COLOR_CODE, colorCodeItem)
+		self.setItem(row, ColorTableWidget.COLUMN_COLOR_RED, colorRedItem)
+		self.setItem(row, ColorTableWidget.COLUMN_COLOR_GREEN, colorGreenItem)
+		self.setItem(row, ColorTableWidget.COLUMN_COLOR_BLUE, colorBlueItem)
+
+	def _setColorDataAt(self, row, colorData):
+		colorDataUUID = colorData.getUUID()
+		colorName = colorData.colorName
+		colorCode = colorData.colorCode
+		red = colorData.red
+		green = colorData.green
+		blue = colorData.blue
+
+		colorThumbnail = self.cellWidget(row, ColorTableWidget.COLUMN_COLOR_THUMBNAIL)
+		colorThumbnail.color = QtGui.QColor(red, green, blue)
+
+		colorNameItem = self.item(row, ColorTableWidget.COLUMN_COLOR_NAME)
+		colorNameItem.setText(colorName)
+		colorNameItem.__colorDataUUID = colorDataUUID
+
+		colorCodeItem = self.item(row, ColorTableWidget.COLUMN_COLOR_CODE)
+		colorCodeItem.setText(colorCode)
+		colorCodeItem.__colorDataUUID = colorDataUUID
+
+		colorRedItem = self.item(row, ColorTableWidget.COLUMN_COLOR_RED)
+		colorRedItem.setText(str(red))
+
+		colorGreenItem = self.item(row, ColorTableWidget.COLUMN_COLOR_GREEN)
+		colorGreenItem.setText(str(green))
+
+		colorBlueItem = self.item(row, ColorTableWidget.COLUMN_COLOR_BLUE)
+		colorBlueItem.setText(str(blue))
 
 	def addNewColorData(self, colorName, colorCode, colorAsQColor):
 		r = colorAsQColor.red()
 		g = colorAsQColor.green()
 		b = colorAsQColor.blue()
-		self._colorDataList.addNewColorData(colorName, colorCode, r, g, b)
-		self.reload()
+		colorDataUUID = self._colorDataList.addNewColorData(colorName, colorCode, r, g, b)
+		colorData = self._colorDataList.getCopyOfColorDataByUUID(colorDataUUID)
 
-	def paintEvent(self, paintEvent):
-		pass
+		self._addNewBlankRow()
+		row = self.rowCount()
+		row -= 1
+		self._setColorDataAt(row, colorData)
+
+	def selectAndEditLastRowAtColumn(self, column):
+		row = self.rowCount() - 1
+		item = self.item(row, column)
+		self.setCurrentCell(row, column)
+		self.editItem(item)
+
+	def reload(self):
+		numberOfTotalColors = self._colorDataList.numberOfTotalColors()
+
+		while self.rowCount() > numberOfTotalColors:
+			self.removeRow(0)
+
+		while self.rowCount() < numberOfTotalColors:
+			self._addNewBlankRow()
+
+		row = 0
+		for colorDataUUID in self._colorDataList.getAllUUIDs():
+			colorData = self._colorDataList.getCopyOfColorDataByUUID(colorDataUUID)
+			self._setColorDataAt(row, colorData)
+			row += 1
+
+	def exportAsCSV(self, delimeter=';'):
+		return self._colorDataList.exportAsCSV(delimeter)
+
+	def loadFromCSV(self, fileName):
+		content = None
+		with open(fileName) as f:
+			content = f.read()
+		if not content:
+			return
+
+		self._colorDataList.loadFromCSVContent(content)
+		self.reload()
 
 
 def main():

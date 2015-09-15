@@ -1,4 +1,5 @@
 import sys
+import os
 import random
 import uuid
 from PySide import QtGui, QtCore
@@ -17,6 +18,8 @@ class MainWindow(QtGui.QMainWindow):
 		self.imagePixmap = None
 		self.imagePixmapGraphicsItem = None
 		self.colorTableWidget = None
+
+		self.lastOpenDirectoryPath = None
 
 		self.initLayout()
 		self.show()
@@ -77,12 +80,14 @@ class MainWindow(QtGui.QMainWindow):
 		viewMenu.addAction(reloadColorListAct)
 
 	def openImage(self):
-		fileName,_ = QtGui.QFileDialog.getOpenFileName(self, 'Open Image', QtCore.QDir.currentPath(), 'Image Files (*.png *.jpg *.bmp)')
-		self.imagePixmap = QtGui.QPixmap(fileName)
-		self.image = self.imagePixmap.toImage()
-		self.imagePixmapGraphicsItem = QtGui.QGraphicsPixmapItem(self.imagePixmap)
-		self.canvasScene.addItem(self.imagePixmapGraphicsItem)
-		self.canvasView.fitInView(self.imagePixmapGraphicsItem, QtCore.Qt.KeepAspectRatio)
+		fileName,_ = QtGui.QFileDialog.getOpenFileName(self, 'Open Image', self.lastOpenDirectoryPath or QtCore.QDir.currentPath(), 'Image Files (*.png *.jpg *.bmp)')
+		if fileName:
+			self.lastOpenDirectoryPath,_ = os.path.split(fileName)
+			self.imagePixmap = QtGui.QPixmap(fileName)
+			self.image = self.imagePixmap.toImage()
+			self.imagePixmapGraphicsItem = QtGui.QGraphicsPixmapItem(self.imagePixmap)
+			self.canvasScene.addItem(self.imagePixmapGraphicsItem)
+			self.canvasView.fitInView(self.imagePixmapGraphicsItem, QtCore.Qt.KeepAspectRatio)
 
 	def fitInView(self):
 		if self.canvasView == None or self.imagePixmapGraphicsItem == None:
@@ -93,25 +98,29 @@ class MainWindow(QtGui.QMainWindow):
 		self.colorTableWidget.reload()
 
 	def loadProject(self):
-		fileName,_ = QtGui.QFileDialog.getOpenFileName(self, 'Load Project', QtCore.QDir.currentPath(), 'CTM Files (*.ctm)')
-		self.colorTableWidget.loadFromCSV(fileName)
+		fileName,_ = QtGui.QFileDialog.getOpenFileName(self, 'Load Project', self.lastOpenDirectoryPath or QtCore.QDir.currentPath(), 'CTM Files (*.ctm)')
+		if fileName:
+			self.lastOpenDirectoryPath,_ = os.path.split(fileName)
+			self.colorTableWidget.loadFromCSV(fileName)
 
 	def saveProject(self):
 		format = 'ctm'
-		initialPath = QtCore.QDir.currentPath() + "/colorDataExport." + format
+		initialPath = (self.lastOpenDirectoryPath or QtCore.QDir.currentPath()) + "/colorDataExport." + format
 		fileName, _ = QtGui.QFileDialog.getSaveFileName(self, 'Save As', initialPath, '%s Files (*.%s);;All Files (*)' % (format.upper(), format))
 
 		if fileName:
+			self.lastOpenDirectoryPath,_ = os.path.split(fileName)
 			output = self.colorTableWidget.exportAsCSV()
 			with open(fileName, 'w') as f:
 				f.write(output)
 
 	def exportAsCSV(self):
 		format = 'csv'
-		initialPath = QtCore.QDir.currentPath() + "/colorDataExport." + format
+		initialPath = (self.lastOpenDirectoryPath or QtCore.QDir.currentPath()) + "/colorDataExport." + format
 		fileName, _ = QtGui.QFileDialog.getSaveFileName(self, 'Save As', initialPath, '%s Files (*.%s);;All Files (*)' % (format.upper(), format))
 
 		if fileName:
+			self.lastOpenDirectoryPath,_ = os.path.split(fileName)
 			output = self.colorTableWidget.exportAsCSV(includeUUID=False)
 			with open(fileName, 'w') as f:
 				f.write(output)
@@ -327,8 +336,8 @@ class ColorDataList(object):
 		for colorData in self._internalList:
 			if includeUUID:
 				outputString += str(colorData.getUUID()) + delimeter
-			outputString += colorData.colorName + delimeter
 			outputString += colorData.colorCode + delimeter
+			outputString += colorData.colorName + delimeter
 			outputString += str(colorData.red) + delimeter
 			outputString += str(colorData.green) + delimeter
 			outputString += str(colorData.blue) + '\n'

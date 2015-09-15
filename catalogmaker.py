@@ -54,9 +54,13 @@ class MainWindow(QtGui.QMainWindow):
 		reloadColorListAct.setStatusTip('Reload Color table')
 		reloadColorListAct.triggered.connect(self.reloadColorList)
 
-		loadFromCSVAct = QtGui.QAction('Load from CSV', self)
-		loadFromCSVAct.setStatusTip('Load data from CSV')
-		loadFromCSVAct.triggered.connect(self.loadFromCSV)
+		loadProjectAct = QtGui.QAction('Load', self)
+		loadProjectAct.setStatusTip('Load project file')
+		loadProjectAct.triggered.connect(self.loadProject)
+
+		saveProjectAct = QtGui.QAction('Save', self)
+		saveProjectAct.setStatusTip('Save project file')
+		saveProjectAct.triggered.connect(self.saveProject)
 
 		exportAsCSVAct = QtGui.QAction('Export as CSV', self)
 		exportAsCSVAct.setStatusTip('Export as CSV')
@@ -64,7 +68,8 @@ class MainWindow(QtGui.QMainWindow):
 
 		fileMenu = self.menuBar().addMenu('File')
 		fileMenu.addAction(openImageAct)
-		fileMenu.addAction(loadFromCSVAct)
+		fileMenu.addAction(saveProjectAct)
+		fileMenu.addAction(loadProjectAct)
 		fileMenu.addAction(exportAsCSVAct)
 
 		viewMenu = self.menuBar().addMenu('View')
@@ -87,17 +92,27 @@ class MainWindow(QtGui.QMainWindow):
 	def reloadColorList(self):
 		self.colorTableWidget.reload()
 
-	def loadFromCSV(self):
-		fileName,_ = QtGui.QFileDialog.getOpenFileName(self, 'Load CSV', QtCore.QDir.currentPath(), 'CSV Files (*.csv)')
+	def loadProject(self):
+		fileName,_ = QtGui.QFileDialog.getOpenFileName(self, 'Load Project', QtCore.QDir.currentPath(), 'CTM Files (*.ctm)')
 		self.colorTableWidget.loadFromCSV(fileName)
+
+	def saveProject(self):
+		format = 'ctm'
+		initialPath = QtCore.QDir.currentPath() + "/colorDataExport." + format
+		fileName, _ = QtGui.QFileDialog.getSaveFileName(self, 'Save As', initialPath, '%s Files (*.%s);;All Files (*)' % (format.upper(), format))
+
+		if fileName:
+			output = self.colorTableWidget.exportAsCSV()
+			with open(fileName, 'w') as f:
+				f.write(output)
 
 	def exportAsCSV(self):
 		format = 'csv'
 		initialPath = QtCore.QDir.currentPath() + "/colorDataExport." + format
 		fileName, _ = QtGui.QFileDialog.getSaveFileName(self, 'Save As', initialPath, '%s Files (*.%s);;All Files (*)' % (format.upper(), format))
-		
+
 		if fileName:
-			output = self.colorTableWidget.exportAsCSV()
+			output = self.colorTableWidget.exportAsCSV(includeUUID=False)
 			with open(fileName, 'w') as f:
 				f.write(output)
 
@@ -307,10 +322,11 @@ class ColorDataList(object):
 			blue = int(c[5])
 			self.addNewColorData(name, code, red, green, blue, colorDataUUID=colorUUID)
 
-	def exportAsCSV(self, delimeter=','):
+	def exportAsCSV(self, includeUUID=True, delimeter=','):
 		outputString = ''
 		for colorData in self._internalList:
-			outputString += str(colorData.getUUID()) + delimeter
+			if includeUUID:
+				outputString += str(colorData.getUUID()) + delimeter
 			outputString += colorData.colorName + delimeter
 			outputString += colorData.colorCode + delimeter
 			outputString += str(colorData.red) + delimeter
@@ -478,8 +494,8 @@ class ColorTableWidget(QtGui.QTableWidget):
 			self._setColorDataAt(row, colorData)
 			row += 1
 
-	def exportAsCSV(self, delimeter=','):
-		return self._colorDataList.exportAsCSV(delimeter)
+	def exportAsCSV(self, includeUUID=True, delimeter=','):
+		return self._colorDataList.exportAsCSV(includeUUID, delimeter)
 
 	def loadFromCSV(self, fileName):
 		content = None

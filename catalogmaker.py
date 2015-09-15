@@ -32,7 +32,7 @@ class MainWindow(QtGui.QMainWindow):
 		canvasView.delegate = self
 		self.setCentralWidget(canvasView)
 		self.canvasScene = canvasScene
-		self.canvasView = canvasView;
+		self.canvasView = canvasView
 
 		# Right dock widget
 		dock = QtGui.QDockWidget('Color List', self)
@@ -291,7 +291,7 @@ class ColorDataList(object):
 		for c in self._internalList:
 			yield c.getUUID()
 
-	def loadFromCSVContent(self, content, delimeter=';'):
+	def loadFromCSVContent(self, content, delimeter=','):
 		self.clearAll()
 		lines = content.split('\n')
 		for line in lines:
@@ -307,7 +307,7 @@ class ColorDataList(object):
 			blue = int(c[5])
 			self.addNewColorData(name, code, red, green, blue, colorDataUUID=colorUUID)
 
-	def exportAsCSV(self, delimeter=';'):
+	def exportAsCSV(self, delimeter=','):
 		outputString = ''
 		for colorData in self._internalList:
 			outputString += str(colorData.getUUID()) + delimeter
@@ -478,7 +478,7 @@ class ColorTableWidget(QtGui.QTableWidget):
 			self._setColorDataAt(row, colorData)
 			row += 1
 
-	def exportAsCSV(self, delimeter=';'):
+	def exportAsCSV(self, delimeter=','):
 		return self._colorDataList.exportAsCSV(delimeter)
 
 	def loadFromCSV(self, fileName):

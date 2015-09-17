@@ -101,7 +101,7 @@ class MainWindow(QtGui.QMainWindow):
 		fileName,_ = QtGui.QFileDialog.getOpenFileName(self, 'Load Project', self.lastOpenDirectoryPath or QtCore.QDir.currentPath(), 'CTM Files (*.ctm)')
 		if fileName:
 			self.lastOpenDirectoryPath,_ = os.path.split(fileName)
-			self.colorTableWidget.loadFromCSV(fileName)
+			self.colorTableWidget.loadFromCTM(fileName)
 
 	def saveProject(self):
 		format = 'ctm'
@@ -110,7 +110,7 @@ class MainWindow(QtGui.QMainWindow):
 
 		if fileName:
 			self.lastOpenDirectoryPath,_ = os.path.split(fileName)
-			output = self.colorTableWidget.exportAsCSV()
+			output = self.colorTableWidget.exportAsCTM()
 			with open(fileName, 'w') as f:
 				f.write(output)
 
@@ -315,7 +315,8 @@ class ColorDataList(object):
 		for c in self._internalList:
 			yield c.getUUID()
 
-	def loadFromCSVContent(self, content, delimeter=','):
+	def loadFromCTMContent(self, content):
+		delimeter=','
 		self.clearAll()
 		lines = content.split('\n')
 		for line in lines:
@@ -331,11 +332,21 @@ class ColorDataList(object):
 			blue = int(c[5])
 			self.addNewColorData(name, code, red, green, blue, colorDataUUID=colorUUID)
 
-	def exportAsCSV(self, includeUUID=True, delimeter=','):
+	def exportAsCTM(self):
+		delimeter=','
 		outputString = ''
 		for colorData in self._internalList:
-			if includeUUID:
-				outputString += str(colorData.getUUID()) + delimeter
+			outputString += str(colorData.getUUID()) + delimeter
+			outputString += colorData.colorName + delimeter
+			outputString += colorData.colorCode + delimeter
+			outputString += str(colorData.red) + delimeter
+			outputString += str(colorData.green) + delimeter
+			outputString += str(colorData.blue) + '\n'
+		return outputString
+
+	def exportAsCSV(self, delimeter=','):
+		outputString = ''
+		for colorData in self._internalList:
 			outputString += colorData.colorCode + delimeter
 			outputString += colorData.colorName + delimeter
 			outputString += str(colorData.red) + delimeter
@@ -503,18 +514,21 @@ class ColorTableWidget(QtGui.QTableWidget):
 			self._setColorDataAt(row, colorData)
 			row += 1
 
-	def exportAsCSV(self, includeUUID=True, delimeter=','):
-		return self._colorDataList.exportAsCSV(includeUUID, delimeter)
-
-	def loadFromCSV(self, fileName):
+	def loadFromCTM(self, fileName):
 		content = None
 		with open(fileName) as f:
 			content = f.read()
 		if not content:
 			return
 
-		self._colorDataList.loadFromCSVContent(content)
+		self._colorDataList.loadFromCTMContent(content)
 		self.reload()
+
+	def exportAsCTM(self):
+		return self._colorDataList.exportAsCTM()
+
+	def exportAsCSV(self, includeUUID=True, delimeter=','):
+		return self._colorDataList.exportAsCSV(delimeter)
 
 
 def main():
